@@ -53,12 +53,15 @@ steps:
         from_secret: s3_releases_bucket
     commands:
       - |
-        apk add --no-cache aws-cli tar
+        # 🔴 MODIFICATION : On installe zip au lieu de tar
+        apk add --no-cache aws-cli zip
         COMMIT_SHA_SHORT=$(echo $DRONE_COMMIT_SHA | cut -c 1-7)
         ARTIFACT_NAME="resto-sha-${COMMIT_SHA_SHORT}"
-        echo "Creating archive for master push: ${ARTIFACT_NAME}.tar.gz"
-        tar -czvf "${ARTIFACT_NAME}.tar.gz" public
-        aws s3 cp "${ARTIFACT_NAME}.tar.gz" s3://$S3_RELEASES_BUCKET/
+        echo "Creating archive for master push: ${ARTIFACT_NAME}.zip"
+        # 🔴 MODIFICATION : On utilise la commande zip
+        zip -r "${ARTIFACT_NAME}.zip" public
+        # 🔴 MODIFICATION : On envoie le fichier .zip
+        aws s3 cp "${ARTIFACT_NAME}.zip" s3://$S3_RELEASES_BUCKET/
 
 ---
 # ===================================================================
@@ -93,15 +96,18 @@ steps:
         from_secret: s3_releases_bucket
     commands:
       - |
-        apk add --no-cache aws-cli tar
+        # 🔴 MODIFICATION : On installe zip au lieu de tar
+        apk add --no-cache aws-cli zip
         ARTIFACT_NAME="resto-${DRONE_TAG}"
-        echo "Creating archive for tag: ${ARTIFACT_NAME}.tar.gz"
-        tar -czvf "${ARTIFACT_NAME}.tar.gz" public
-        aws s3 cp "${ARTIFACT_NAME}.tar.gz" s3://$S3_RELEASES_BUCKET/
+        echo "Creating archive for tag: ${ARTIFACT_NAME}.zip"
+        # 🔴 MODIFICATION : On utilise la commande zip
+        zip -r "${ARTIFACT_NAME}.zip" public
+        # 🔴 MODIFICATION : On envoie le fichier .zip
+        aws s3 cp "${ARTIFACT_NAME}.zip" s3://$S3_RELEASES_BUCKET/
 
 ---
 # ===================================================================
-# PIPELINE 4 : Promotion vers Staging ou Production
+# PIPELINE 4 : Promotion vers Staging ou Production (INCHANGÉE)
 # ===================================================================
 kind: pipeline
 type: docker
@@ -116,7 +122,7 @@ trigger:
 
 steps:
   - name: deploy-release
-    image: peaceiris/hugo:v0.65.3-mod # Image qui contient Hugo ET aws-cli (ou peut l'installer)
+    image: peaceiris/hugo:v0.65.3-mod
     environment:
       AWS_ACCESS_KEY_ID:
         from_secret: aws_access_key_id
@@ -136,7 +142,6 @@ steps:
         from_secret: s3_staging_bucket
     commands:
       - |
-        # On détermine la bonne URL et le bon bucket en fonction de la cible
         if [ "$DRONE_DEPLOY_TO" = "production" ]; then
           BASE_URL="$S3_PROD_URL"
           BUCKET_NAME="$S3_PROD_BUCKET"
@@ -147,9 +152,7 @@ steps:
 
         echo "Deploying to ${DRONE_DEPLOY_TO} with URL ${BASE_URL}"
         
-        # On recompile le code source avec la bonne baseURL
         hugo --baseURL $BASE_URL
         
-        # On installe aws-cli et on synchronise le résultat vers le bon bucket
         apk add --no-cache aws-cli
         aws s3 sync public/ s3://$BUCKET_NAME/ --delete
