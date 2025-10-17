@@ -8,7 +8,7 @@ trigger:
 
 steps:
   - name: build
-    image: klakegg/hugo:0.118.2-ext-alpine
+    image: peaceiris/hugo:v0.65.3-mod
     environment:
       BASE_URL:
         from_secret: s3_prod_url
@@ -26,7 +26,7 @@ trigger:
 
 steps:
   - name: build
-    image: klakegg/hugo:0.118.2-ext-alpine
+    image: peaceiris/hugo:v0.65.3-mod
     environment:
       BASE_URL:
         from_secret: s3_releases_url
