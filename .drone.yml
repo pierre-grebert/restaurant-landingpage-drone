@@ -41,7 +41,7 @@ steps:
       AWS_ACCESS_KEY_ID:
         from_secret: aws_access_key_id
       AWS_SECRET_ACCESS_KEY:
-        from_secret: aws_secret_access_key
+        from_secret: aws_secret_key
       AWS_SESSION_TOKEN:
         from_secret: aws_session_token
       AWS_DEFAULT_REGION:
@@ -56,10 +56,8 @@ steps:
         
         aws s3 sync public/ s3://$S3_STAGING_BUCKET/ --delete
         
-        COMMIT_SHA_SHORT=$(echo $DRONE_COMMIT_SHA | cut -c 1-7)
-        ARTIFACT_NAME="restaurant-build-preprod-${COMMIT_SHA_SHORT}"
-        zip -r "${ARTIFACT_NAME}.zip" public
-        aws s3 cp "${ARTIFACT_NAME}.zip" s3://$S3_RELEASES_BUCKET/preprod/
+        zip -r "restaurant-build-preprod-$(echo $DRONE_COMMIT_SHA | cut -c 1-8).zip" public/
+        aws s3 cp "restaurant-build-preprod-$(echo $DRONE_COMMIT_SHA | cut -c 1-8).zip" "s3://${S3_RELEASES_BUCKET}/preprod/"
 
 ---
 kind: pipeline
@@ -71,10 +69,13 @@ trigger:
     - tag
 
 steps:
-  - name: build-for-release
+  - name: build-for-production
     image: peaceiris/hugo:v0.65.3-mod
+    environment:
+      BASE_URL:
+        from_secret: s3_prod_url
     commands:
-      - hugo
+      - hugo --baseURL $BASE_URL
 
   - name: create-and-upload-archive
     image: alpine:latest
@@ -82,7 +83,7 @@ steps:
       AWS_ACCESS_KEY_ID:
         from_secret: aws_access_key_id
       AWS_SECRET_ACCESS_KEY:
-        from_secret: aws_secret_access_key
+        from_secret: aws_secret_key
       AWS_SESSION_TOKEN:
         from_secret: aws_session_token
       AWS_DEFAULT_REGION:
@@ -92,9 +93,9 @@ steps:
     commands:
       - |
         apk add --no-cache aws-cli zip
-        ARTIFACT_NAME="resto-${DRONE_TAG}"
-        zip -r "${ARTIFACT_NAME}.zip" public
-        aws s3 cp "${ARTIFACT_NAME}.zip" s3://$S3_RELEASES_BUCKET/
+        
+        zip -r "restaurant-build-prod-${DRONE_TAG}.zip" public/
+        aws s3 cp "restaurant-build-prod-${DRONE_TAG}.zip" "s3://${S3_RELEASES_BUCKET}/"
 
 ---
 kind: pipeline
@@ -109,36 +110,38 @@ trigger:
     - production
 
 steps:
-  - name: deploy-release
-    image: peaceiris/hugo:v0.65.3-mod
+  - name: download-extract-and-deploy
+    image: alpine:latest
     environment:
       AWS_ACCESS_KEY_ID:
         from_secret: aws_access_key_id
       AWS_SECRET_ACCESS_KEY:
-        from_secret: aws_secret_access_key
+        from_secret: aws_secret_key
       AWS_SESSION_TOKEN:
         from_secret: aws_session_token
       AWS_DEFAULT_REGION:
         from_secret: aws_region
-      S3_PROD_URL:
-        from_secret: s3_prod_url
-      S3_STAGING_URL:
-        from_secret: s3_staging_url
       S3_PROD_BUCKET:
         from_secret: s3_prod_bucket
       S3_STAGING_BUCKET:
         from_secret: s3_staging_bucket
+      S3_RELEASES_BUCKET:
+        from_secret: s3_releases_bucket
     commands:
       - |
+        apk add --no-cache aws-cli unzip
+        
         if [ "$DRONE_DEPLOY_TO" = "production" ]; then
-          BASE_URL="$S3_PROD_URL"
+          ARTIFACT_FILE="restaurant-build-prod-${DRONE_TAG}.zip"
           BUCKET_NAME="$S3_PROD_BUCKET"
+          aws s3 cp "s3://${S3_RELEASES_BUCKET}/${ARTIFACT_FILE}" .
         else
-          BASE_URL="$S3_STAGING_URL"
+          COMMIT_SHA_SHORT=$(echo $DRONE_COMMIT_SHA | cut -c 1-8)
+          ARTIFACT_FILE="restaurant-build-preprod-${COMMIT_SHA_SHORT}.zip"
           BUCKET_NAME="$S3_STAGING_BUCKET"
+          aws s3 cp "s3://${S3_RELEASES_BUCKET}/preprod/${ARTIFACT_FILE}" .
         fi
+
+        unzip "${ARTIFACT_FILE}" -d extracted_site
         
-        hugo --baseURL $BASE_URL
-        
-        apk add --no-cache aws-cli
-        aws s3 sync public/ s3://$BUCKET_NAME/ --delete
+        aws s3 sync extracted_site/public/ "s3://${BUCKET_NAME}/" --delete
