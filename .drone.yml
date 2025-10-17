@@ -48,18 +48,38 @@ steps:
         from_secret: s3_releases_bucket
     commands:
       - |
+        # On commence par installer les outils
         apk add --no-cache aws-cli tar
         
-        if [ -n "$DRONE_TAG" ]; then
+        # --- DÉBOGAGE : On affiche les variables que Drone nous donne ---
+        echo "Drone event is: $DRONE_BUILD_EVENT"
+        echo "Drone tag is: '$DRONE_TAG'"
+        echo "Drone commit SHA is: '$DRONE_COMMIT_SHA'"
+        
+        # On initialise la variable pour être sûr qu'elle existe
+        ARTIFACT_NAME=""
+        
+        # On choisit le nom de l'archive
+        if [ "$DRONE_BUILD_EVENT" = "tag" ]; then
           ARTIFACT_NAME="resto-$DRONE_TAG"
         else
-          ARTIFACT_NAME="resto-sha-$(echo $DRONE_COMMIT_SHA | head -c 7)"
+          # On prend les 7 premiers caractères du SHA
+          COMMIT_SHA_SHORT=$(echo $DRONE_COMMIT_SHA | cut -c 1-7)
+          ARTIFACT_NAME="resto-sha-$COMMIT_SHA_SHORT"
         fi
         
-        echo "Creating archive named: ${ARTIFACT_NAME}.tar.gz"
+        echo "Final artifact name is: '$ARTIFACT_NAME'"
         
+        # --- SÉCURITÉ : On arrête le script si le nom est vide ---
+        if [ -z "$ARTIFACT_NAME" ]; then
+          echo "Error: Artifact name is empty. Aborting."
+          exit 1
+        fi
+        
+        # On crée l'archive
         tar -czvf "${ARTIFACT_NAME}.tar.gz" public
         
+        # On l'uploade sur S3
         aws s3 cp "${ARTIFACT_NAME}.tar.gz" s3://$S3_RELEASES_BUCKET/
 
 ---
