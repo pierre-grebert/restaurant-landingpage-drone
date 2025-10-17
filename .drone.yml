@@ -1,6 +1,3 @@
-# ===================================================================
-# PIPELINE 1 : Build de test sur les branches de fonctionnalités (INCHANGÉE)
-# ===================================================================
 kind: pipeline
 type: docker
 name: test-build
@@ -19,12 +16,9 @@ steps:
       - hugo
 
 ---
-# ===================================================================
-# PIPELINE 2 : Push sur Master -> Crée une Release "instable"
-# ===================================================================
 kind: pipeline
 type: docker
-name: create-master-release
+name: deploy-to-staging
 
 trigger:
   event:
@@ -33,12 +27,15 @@ trigger:
     - master
 
 steps:
-  - name: build-for-release
+  - name: build-for-staging
     image: peaceiris/hugo:v0.65.3-mod
+    environment:
+      BASE_URL:
+        from_secret: s3_staging_url
     commands:
-      - hugo
+      - hugo --baseURL $BASE_URL
 
-  - name: create-and-upload-archive
+  - name: deploy-and-archive-staging
     image: alpine:latest
     environment:
       AWS_ACCESS_KEY_ID:
@@ -49,24 +46,22 @@ steps:
         from_secret: aws_session_token
       AWS_DEFAULT_REGION:
         from_secret: aws_region
+      S3_STAGING_BUCKET:
+        from_secret: s3_staging_bucket
       S3_RELEASES_BUCKET:
         from_secret: s3_releases_bucket
     commands:
       - |
-        # 🔴 MODIFICATION : On installe zip au lieu de tar
         apk add --no-cache aws-cli zip
+        
+        aws s3 sync public/ s3://$S3_STAGING_BUCKET/ --delete
+        
         COMMIT_SHA_SHORT=$(echo $DRONE_COMMIT_SHA | cut -c 1-7)
-        ARTIFACT_NAME="resto-sha-${COMMIT_SHA_SHORT}"
-        echo "Creating archive for master push: ${ARTIFACT_NAME}.zip"
-        # 🔴 MODIFICATION : On utilise la commande zip
+        ARTIFACT_NAME="restaurant-build-preprod-${COMMIT_SHA_SHORT}"
         zip -r "${ARTIFACT_NAME}.zip" public
-        # 🔴 MODIFICATION : On envoie le fichier .zip
-        aws s3 cp "${ARTIFACT_NAME}.zip" s3://$S3_RELEASES_BUCKET/
+        aws s3 cp "${ARTIFACT_NAME}.zip" s3://$S3_RELEASES_BUCKET/preprod/
 
 ---
-# ===================================================================
-# PIPELINE 3 : Push d'un Tag -> Crée une Release "stable"
-# ===================================================================
 kind: pipeline
 type: docker
 name: create-tagged-release
@@ -96,19 +91,12 @@ steps:
         from_secret: s3_releases_bucket
     commands:
       - |
-        # 🔴 MODIFICATION : On installe zip au lieu de tar
         apk add --no-cache aws-cli zip
         ARTIFACT_NAME="resto-${DRONE_TAG}"
-        echo "Creating archive for tag: ${ARTIFACT_NAME}.zip"
-        # 🔴 MODIFICATION : On utilise la commande zip
         zip -r "${ARTIFACT_NAME}.zip" public
-        # 🔴 MODIFICATION : On envoie le fichier .zip
         aws s3 cp "${ARTIFACT_NAME}.zip" s3://$S3_RELEASES_BUCKET/
 
 ---
-# ===================================================================
-# PIPELINE 4 : Promotion vers Staging ou Production (INCHANGÉE)
-# ===================================================================
 kind: pipeline
 type: docker
 name: promote-to-environment
@@ -149,8 +137,6 @@ steps:
           BASE_URL="$S3_STAGING_URL"
           BUCKET_NAME="$S3_STAGING_BUCKET"
         fi
-
-        echo "Deploying to ${DRONE_DEPLOY_TO} with URL ${BASE_URL}"
         
         hugo --baseURL $BASE_URL
         
