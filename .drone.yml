@@ -47,10 +47,20 @@ steps:
       S3_RELEASES_BUCKET:
         from_secret: s3_releases_bucket
     commands:
-      - apk add --no-cache aws-cli tar
-      - 'if [ -n "$DRONE_TAG" ]; then ARTIFACT_NAME="$DRONE_TAG"; else ARTIFACT_NAME="sha-$(echo $DRONE_COMMIT_SHA | head -c 7)"; fi'
-      - tar -czvf ${ARTIFACT_NAME}.tar.gz public
-      - aws s3 cp ${ARTIFACT_NAME}.tar.gz s3://$S3_RELEASES_BUCKET/
+      - |
+        apk add --no-cache aws-cli tar
+        
+        if [ -n "$DRONE_TAG" ]; then
+          ARTIFACT_NAME="resto-$DRONE_TAG"
+        else
+          ARTIFACT_NAME="resto-sha-$(echo $DRONE_COMMIT_SHA | head -c 7)"
+        fi
+        
+        echo "Creating archive named: ${ARTIFACT_NAME}.tar.gz"
+        
+        tar -czvf "${ARTIFACT_NAME}.tar.gz" public
+        
+        aws s3 cp "${ARTIFACT_NAME}.tar.gz" s3://$S3_RELEASES_BUCKET/
 
 ---
 kind: pipeline
