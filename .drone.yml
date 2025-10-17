@@ -1,3 +1,6 @@
+# ===================================================================
+# PIPELINE 1 : Build de test sur les branches de fonctionnalités (INCHANGÉE)
+# ===================================================================
 kind: pipeline
 type: docker
 name: test-build
@@ -16,14 +19,16 @@ steps:
       - hugo
 
 ---
+# ===================================================================
+# PIPELINE 2 : Push sur Master -> Crée une Release "instable"
+# ===================================================================
 kind: pipeline
 type: docker
-name: create-release-artifact
+name: create-master-release
 
 trigger:
   event:
     - push
-    - tag
   branch:
     - master
 
@@ -49,34 +54,55 @@ steps:
     commands:
       - |
         apk add --no-cache aws-cli tar
-        
-        echo "Drone event is: $DRONE_BUILD_EVENT"
-        echo "Drone tag is: '$DRONE_TAG'"
-        echo "Drone commit SHA is: '$DRONE_COMMIT_SHA'"
-        
-        ARTIFACT_NAME=""
-        
-        if [ "$DRONE_BUILD_EVENT" = "tag" ]; then
-          ARTIFACT_NAME="resto-$DRONE_TAG"
-        else
-          COMMIT_SHA_SHORT=$(echo $DRONE_COMMIT_SHA | cut -c 1-7)
-          ARTIFACT_NAME="resto-sha-$COMMIT_SHA_SHORT"
-        fi
-        
-        echo "Final artifact name is: '$ARTIFACT_NAME'"
-        
-        if [ -z "$ARTIFACT_NAME" ]; then
-          echo "Error: Artifact name is empty. Aborting."
-          exit 1
-        fi
-        
-        # 🔴 CORRECTION : On utilise bien la variable ici
+        COMMIT_SHA_SHORT=$(echo $DRONE_COMMIT_SHA | cut -c 1-7)
+        ARTIFACT_NAME="resto-sha-${COMMIT_SHA_SHORT}"
+        echo "Creating archive for master push: ${ARTIFACT_NAME}.tar.gz"
         tar -czvf "${ARTIFACT_NAME}.tar.gz" public
-        
-        # 🔴 ET ici
         aws s3 cp "${ARTIFACT_NAME}.tar.gz" s3://$S3_RELEASES_BUCKET/
 
 ---
+# ===================================================================
+# PIPELINE 3 : Push d'un Tag -> Crée une Release "stable"
+# ===================================================================
+kind: pipeline
+type: docker
+name: create-tagged-release
+
+trigger:
+  event:
+    - tag
+
+steps:
+  - name: build-for-release
+    image: peaceiris/hugo:v0.65.3-mod
+    commands:
+      - hugo
+
+  - name: create-and-upload-archive
+    image: alpine:latest
+    environment:
+      AWS_ACCESS_KEY_ID:
+        from_secret: aws_access_key_id
+      AWS_SECRET_ACCESS_KEY:
+        from_secret: aws_secret_access_key
+      AWS_SESSION_TOKEN:
+        from_secret: aws_session_token
+      AWS_DEFAULT_REGION:
+        from_secret: aws_region
+      S3_RELEASES_BUCKET:
+        from_secret: s3_releases_bucket
+    commands:
+      - |
+        apk add --no-cache aws-cli tar
+        ARTIFACT_NAME="resto-${DRONE_TAG}"
+        echo "Creating archive for tag: ${ARTIFACT_NAME}.tar.gz"
+        tar -czvf "${ARTIFACT_NAME}.tar.gz" public
+        aws s3 cp "${ARTIFACT_NAME}.tar.gz" s3://$S3_RELEASES_BUCKET/
+
+---
+# ===================================================================
+# PIPELINE 4 : Promotion vers Staging ou Production
+# ===================================================================
 kind: pipeline
 type: docker
 name: promote-to-environment
@@ -89,8 +115,8 @@ trigger:
     - production
 
 steps:
-  - name: build-and-deploy-to-target
-    image: peaceiris/hugo:v0.65.3-mod
+  - name: deploy-release
+    image: peaceiris/hugo:v0.65.3-mod # Image qui contient Hugo ET aws-cli (ou peut l'installer)
     environment:
       AWS_ACCESS_KEY_ID:
         from_secret: aws_access_key_id
@@ -109,7 +135,21 @@ steps:
       S3_STAGING_BUCKET:
         from_secret: s3_staging_bucket
     commands:
-      - 'if [ "$DRONE_DEPLOY_TO" = "production" ]; then BASE_URL="$S3_PROD_URL" && BUCKET_NAME="$S3_PROD_BUCKET"; else BASE_URL="$S3_STAGING_URL" && BUCKET_NAME="$S3_STAGING_BUCKET"; fi'
-      - echo "Deploying to $DRONE_DEPLOY_TO with URL $BASE_URL"
-      - hugo --baseURL $BASE_URL
-      - aws s3 sync public/ s3://$BUCKET_NAME/ --delete
+      - |
+        # On détermine la bonne URL et le bon bucket en fonction de la cible
+        if [ "$DRONE_DEPLOY_TO" = "production" ]; then
+          BASE_URL="$S3_PROD_URL"
+          BUCKET_NAME="$S3_PROD_BUCKET"
+        else
+          BASE_URL="$S3_STAGING_URL"
+          BUCKET_NAME="$S3_STAGING_BUCKET"
+        fi
+
+        echo "Deploying to ${DRONE_DEPLOY_TO} with URL ${BASE_URL}"
+        
+        # On recompile le code source avec la bonne baseURL
+        hugo --baseURL $BASE_URL
+        
+        # On installe aws-cli et on synchronise le résultat vers le bon bucket
+        apk add --no-cache aws-cli
+        aws s3 sync public/ s3://$BUCKET_NAME/ --delete
