@@ -62,11 +62,13 @@ steps:
 ---
 kind: pipeline
 type: docker
-name: create-tagged-release
+name: create-and-deploy-prod-release
 
 trigger:
   event:
     - tag
+  branch: # On s'assure que le tag est bien sur la branche master
+    - master
 
 steps:
   - name: build-for-production
@@ -96,6 +98,25 @@ steps:
         
         zip -r "restaurant-build-prod-$DRONE_TAG.zip" public/
         aws s3 cp "restaurant-build-prod-$DRONE_TAG.zip" "s3://$S3_RELEASES_BUCKET/prod/"
+
+  - name: deploy-to-production
+    image: alpine:latest
+    environment:
+      AWS_ACCESS_KEY_ID:
+        from_secret: aws_access_key_id
+      AWS_SECRET_ACCESS_KEY:
+        from_secret: aws_secret_access_key
+      AWS_SESSION_TOKEN:
+        from_secret: aws_session_token
+      AWS_DEFAULT_REGION:
+        from_secret: aws_region
+      S3_PROD_BUCKET:
+        from_secret: s3_prod_bucket
+    commands:
+      - |
+        apk add --no-cache aws-cli
+        
+        aws s3 sync public/ s3://$S3_PROD_BUCKET/ --delete
 
 ---
 kind: pipeline
@@ -134,7 +155,7 @@ steps:
         if [ "$DRONE_DEPLOY_TO" = "production" ]; then
           ARTIFACT_FILE="restaurant-build-prod-$DRONE_TAG.zip"
           BUCKET_NAME="$S3_PROD_BUCKET"
-          aws s3 cp "s3://$S3_RELEASES_BUCKET/$ARTIFACT_FILE" .
+          aws s3 cp "s3://$S3_RELEASES_BUCKET/prod/$ARTIFACT_FILE" .
         else
           COMMIT_SHA_SHORT=$(echo $DRONE_COMMIT_SHA | cut -c 1-8)
           ARTIFACT_FILE="restaurant-build-preprod-$COMMIT_SHA_SHORT.zip"
