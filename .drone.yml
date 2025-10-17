@@ -4,7 +4,7 @@ name: build-and-deploy
 
 steps:
 - name: build
-  image: klakegg/hugo:0.118.2-ext-alpine
+  image: peaceiris/hugo:v0.65.3-mod
   commands:
   - hugo --minify
 
