@@ -76,10 +76,10 @@ steps:
           exit 1
         fi
         
-        # On crée l'archive
+        # 🔴 CORRECTION ICI : On utilise bien la variable
         tar -czvf "${ARTIFACT_NAME}.tar.gz" public
         
-        # On l'uploade sur S3
+        # 🔴 CORRECTION ICI : On utilise bien la variable
         aws s3 cp "${ARTIFACT_NAME}.tar.gz" s3://$S3_RELEASES_BUCKET/
 
 ---
