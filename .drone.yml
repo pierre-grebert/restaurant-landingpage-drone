@@ -95,7 +95,7 @@ steps:
         apk add --no-cache aws-cli zip
         
         zip -r "restaurant-build-prod-$DRONE_TAG.zip" public/
-        aws s3 cp "restaurant-build-prod-$DRONE_TAG.zip" "s3://$S3_RELEASES_BUCKET/"
+        aws s3 cp "restaurant-build-prod-$DRONE_TAG.zip" "s3://$S3_RELEASES_BUCKET/prod/"
 
 ---
 kind: pipeline
