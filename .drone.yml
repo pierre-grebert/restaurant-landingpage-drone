@@ -8,8 +8,8 @@ steps:
     environment:
       BASE_URL:
         from_secret: s3_website_url
-      commands:
-        - hugo --baseURL ${BASE_URL} --minify
+    commands:
+      - hugo --baseURL ${BASE_URL} --minify
 
   - name: deploy
     image: amazon/aws-cli
