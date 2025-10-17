@@ -1,39 +1,39 @@
 kind: pipeline
 type: docker
-name: build-on-push
+name: test-build
 
 trigger:
   event:
     - push
+  branch:
+    exclude:
+      - master
 
 steps:
   - name: build
     image: peaceiris/hugo:v0.65.3-mod
-    environment:
-      BASE_URL:
-        from_secret: s3_prod_url
     commands:
-      - hugo --baseURL $BASE_URL
+      - hugo
 
 ---
 kind: pipeline
 type: docker
-name: release-on-tag
+name: create-release-artifact
 
 trigger:
   event:
+    - push
     - tag
+  branch:
+    - master
 
 steps:
-  - name: build
+  - name: build-for-release
     image: peaceiris/hugo:v0.65.3-mod
-    environment:
-      BASE_URL:
-        from_secret: s3_releases_url
     commands:
-      - hugo --baseURL $BASE_URL
+      - hugo
 
-  - name: deploy-to-releases
+  - name: create-and-upload-archive
     image: amazon/aws-cli
     environment:
       AWS_ACCESS_KEY_ID:
@@ -47,22 +47,25 @@ steps:
       S3_RELEASES_BUCKET:
         from_secret: s3_releases_bucket
     commands:
-      - aws s3 sync public/ s3://$S3_RELEASES_BUCKET/$DRONE_TAG/ --delete
+      - 'if [ -n "$DRONE_TAG" ]; then ARTIFACT_NAME="$DRONE_TAG"; else ARTIFACT_NAME="sha-$(echo $DRONE_COMMIT_SHA | head -c 7)"; fi'
+      - tar -czvf ${ARTIFACT_NAME}.tar.gz public
+      - aws s3 cp ${ARTIFACT_NAME}.tar.gz s3://$S3_RELEASES_BUCKET/
 
 ---
 kind: pipeline
 type: docker
-name: promote-to-production
+name: promote-to-environment
 
 trigger:
   event:
     - promote
   target:
+    - staging
     - production
 
 steps:
-  - name: deploy-to-production
-    image: amazon/aws-cli
+  - name: build-and-deploy-to-target
+    image: peaceiris/hugo:v0.65.3-mod
     environment:
       AWS_ACCESS_KEY_ID:
         from_secret: aws_access_key_id
@@ -72,9 +75,16 @@ steps:
         from_secret: aws_session_token
       AWS_DEFAULT_REGION:
         from_secret: aws_region
+      S3_PROD_URL:
+        from_secret: s3_prod_url
+      S3_STAGING_URL:
+        from_secret: s3_staging_url
       S3_PROD_BUCKET:
         from_secret: s3_prod_bucket
-      S3_RELEASES_BUCKET:
-        from_secret: s3_releases_bucket
+      S3_STAGING_BUCKET:
+        from_secret: s3_staging_bucket
     commands:
-      - aws s3 sync s3://$S3_RELEASES_BUCKET/$DRONE_TAG/ s3://$S3_PROD_BUCKET/ --delete
+      - 'if [ "$DRONE_DEPLOY_TO" = "production" ]; then BASE_URL="$S3_PROD_URL" && BUCKET_NAME="$S3_PROD_BUCKET"; else BASE_URL="$S3_STAGING_URL" && BUCKET_NAME="$S3_STAGING_BUCKET"; fi'
+      - echo "Deploying to $DRONE_DEPLOY_TO with URL $BASE_URL"
+      - hugo --baseURL $BASE_URL
+      - aws s3 sync public/ s3://$BUCKET_NAME/ --delete
