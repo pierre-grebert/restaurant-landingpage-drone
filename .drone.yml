@@ -5,8 +5,11 @@ name: build-and-deploy
 steps:
 - name: build
   image: peaceiris/hugo:v0.65.3-mod
-  commands:
-  - hugo --minify
+  environment:
+    BASE_URL:
+      from_secret: s3_website_url
+    commands:
+      - hugo --baseURL ${BASE_URL} --minify
 
 - name: deploy
   image: amazon/aws-cli
