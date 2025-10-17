@@ -48,7 +48,7 @@ steps:
       bucket:
         from_secret: s3_releases_bucket
       target: /${DRONE_TAG}
-      source: public/
+      source: public/**
       delete: true
 
 ---
