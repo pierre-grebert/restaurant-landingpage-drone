@@ -34,7 +34,7 @@ steps:
       - hugo
 
   - name: create-and-upload-archive
-    image: amazon/aws-cli
+    image: alpine:latest
     environment:
       AWS_ACCESS_KEY_ID:
         from_secret: aws_access_key_id
@@ -47,6 +47,7 @@ steps:
       S3_RELEASES_BUCKET:
         from_secret: s3_releases_bucket
     commands:
+      - apk add --no-cache aws-cli tar
       - 'if [ -n "$DRONE_TAG" ]; then ARTIFACT_NAME="$DRONE_TAG"; else ARTIFACT_NAME="sha-$(echo $DRONE_COMMIT_SHA | head -c 7)"; fi'
       - tar -czvf ${ARTIFACT_NAME}.tar.gz public
       - aws s3 cp ${ARTIFACT_NAME}.tar.gz s3://$S3_RELEASES_BUCKET/
