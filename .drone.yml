@@ -57,7 +57,7 @@ steps:
         aws s3 sync public/ s3://$S3_STAGING_BUCKET/ --delete
         
         zip -r "restaurant-build-preprod-$(echo $DRONE_COMMIT_SHA | cut -c 1-8).zip" public/
-        aws s3 cp "restaurant-build-preprod-$(echo $DRONE_COMMIT_SHA | cut -c 1-8).zip" "s3://${S3_RELEASES_BUCKET}/preprod/"
+        aws s3 cp "restaurant-build-preprod-$(echo $DRONE_COMMIT_SHA | cut -c 1-8).zip" "s3://$S3_RELEASES_BUCKET/preprod/"
 
 ---
 kind: pipeline
@@ -94,8 +94,8 @@ steps:
       - |
         apk add --no-cache aws-cli zip
         
-        zip -r "restaurant-build-prod-${DRONE_TAG}.zip" public/
-        aws s3 cp "restaurant-build-prod-${DRONE_TAG}.zip" "s3://${S3_RELEASES_BUCKET}/"
+        zip -r "restaurant-build-prod-$DRONE_TAG.zip" public/
+        aws s3 cp "restaurant-build-prod-$DRONE_TAG.zip" "s3://$S3_RELEASES_BUCKET/"
 
 ---
 kind: pipeline
@@ -132,16 +132,16 @@ steps:
         apk add --no-cache aws-cli unzip
         
         if [ "$DRONE_DEPLOY_TO" = "production" ]; then
-          ARTIFACT_FILE="restaurant-build-prod-${DRONE_TAG}.zip"
+          ARTIFACT_FILE="restaurant-build-prod-$DRONE_TAG.zip"
           BUCKET_NAME="$S3_PROD_BUCKET"
-          aws s3 cp "s3://${S3_RELEASES_BUCKET}/${ARTIFACT_FILE}" .
+          aws s3 cp "s3://$S3_RELEASES_BUCKET/$ARTIFACT_FILE" .
         else
           COMMIT_SHA_SHORT=$(echo $DRONE_COMMIT_SHA | cut -c 1-8)
-          ARTIFACT_FILE="restaurant-build-preprod-${COMMIT_SHA_SHORT}.zip"
+          ARTIFACT_FILE="restaurant-build-preprod-$COMMIT_SHA_SHORT.zip"
           BUCKET_NAME="$S3_STAGING_BUCKET"
-          aws s3 cp "s3://${S3_RELEASES_BUCKET}/preprod/${ARTIFACT_FILE}" .
+          aws s3 cp "s3://$S3_RELEASES_BUCKET/preprod/$ARTIFACT_FILE" .
         fi
 
-        unzip "${ARTIFACT_FILE}" -d extracted_site
+        unzip "$ARTIFACT_FILE" -d extracted_site
         
-        aws s3 sync extracted_site/public/ "s3://${BUCKET_NAME}/" --delete
+        aws s3 sync extracted_site/public/ "s3://$BUCKET_NAME/" --delete
