@@ -3,24 +3,24 @@ type: docker
 name: build-and-deploy
 
 steps:
-- name: build
-  image: peaceiris/hugo:v0.65.3-mod
-  environment:
-    BASE_URL:
-      from_secret: s3_website_url
-    commands:
-      - hugo --baseURL ${BASE_URL} --minify
+  - name: build
+    image: peaceiris/hugo:v0.65.3-mod
+    environment:
+      BASE_URL:
+        from_secret: s3_website_url
+      commands:
+        - hugo --baseURL ${BASE_URL} --minify
 
-- name: deploy
-  image: amazon/aws-cli
-  environment:
-    AWS_ACCESS_KEY_ID:
-      from_secret: aws_access_key_id
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: aws_secret_access_key
-    AWS_SESSION_TOKEN:
-      from_secret: aws_session_token
-    AWS_DEFAULT_REGION:
-      from_secret: aws_region
-  commands:
-  - aws s3 sync public/ s3://restaurant-drone-s3 --delete
+  - name: deploy
+    image: amazon/aws-cli
+    environment:
+      AWS_ACCESS_KEY_ID:
+        from_secret: aws_access_key_id
+      AWS_SECRET_ACCESS_KEY:
+        from_secret: aws_secret_access_key
+      AWS_SESSION_TOKEN:
+        from_secret: aws_session_token
+      AWS_DEFAULT_REGION:
+        from_secret: aws_region
+    commands:
+      - aws s3 sync public/ s3://restaurant-drone-s3 --delete
