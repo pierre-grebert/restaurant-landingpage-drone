@@ -47,7 +47,7 @@ steps:
       S3_RELEASES_BUCKET:
         from_secret: s3_releases_bucket
     commands:
-      - aws s3 sync public/ s3://${S3_RELEASES_BUCKET}/${DRONE_TAG}/ --delete
+      - aws s3 sync public/ s3://$S3_RELEASES_BUCKET/$DRONE_TAG/ --delete
 
 ---
 kind: pipeline
