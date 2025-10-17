@@ -77,4 +77,4 @@ steps:
       S3_RELEASES_BUCKET:
         from_secret: s3_releases_bucket
     commands:
-      - aws s3 sync s3://${S3_RELEASES_BUCKET}/${DRONE_TAG}/ s3://${S3_PROD_BUCKET}/ --delete
+      - aws s3 sync s3://$S3_RELEASES_BUCKET/$DRONE_TAG/ s3://$S3_PROD_BUCKET/ --delete
