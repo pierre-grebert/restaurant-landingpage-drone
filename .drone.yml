@@ -8,7 +8,7 @@ trigger:
 
 steps:
   - name: build
-    image: peaceiris/hugo:v0.65.3-mod
+    image: klakegg/hugo:0.118.2-ext-alpine
     environment:
       BASE_URL:
         from_secret: s3_prod_url
@@ -26,7 +26,7 @@ trigger:
 
 steps:
   - name: build
-    image: peaceiris/hugo:v0.65.3-mod
+    image: klakegg/hugo:0.118.2-ext-alpine
     environment:
       BASE_URL:
         from_secret: s3_releases_url
@@ -34,22 +34,20 @@ steps:
       - hugo --baseURL $BASE_URL
 
   - name: deploy-to-releases
-    image: plugins/s3
-    settings:
-      access_key:
+    image: amazon/aws-cli
+    environment:
+      AWS_ACCESS_KEY_ID:
         from_secret: aws_access_key_id
-      secret_key:
+      AWS_SECRET_ACCESS_KEY:
         from_secret: aws_secret_access_key
-      session_token:
+      AWS_SESSION_TOKEN:
         from_secret: aws_session_token
-      region:
+      AWS_DEFAULT_REGION:
         from_secret: aws_region
-
-      bucket:
+      S3_RELEASES_BUCKET:
         from_secret: s3_releases_bucket
-      target: /${DRONE_TAG}
-      source: public/**
-      delete: true
+    commands:
+      - aws s3 sync public/ s3://${S3_RELEASES_BUCKET}/${DRONE_TAG}/ --delete
 
 ---
 kind: pipeline
@@ -64,20 +62,19 @@ trigger:
 
 steps:
   - name: deploy-to-production
-    image: plugins/s3
-    settings:
-      access_key:
+    image: amazon/aws-cli
+    environment:
+      AWS_ACCESS_KEY_ID:
         from_secret: aws_access_key_id
-      secret_key:
+      AWS_SECRET_ACCESS_KEY:
         from_secret: aws_secret_access_key
-      session_token:
+      AWS_SESSION_TOKEN:
         from_secret: aws_session_token
-      region:
+      AWS_DEFAULT_REGION:
         from_secret: aws_region
-
-      bucket:
+      S3_PROD_BUCKET:
         from_secret: s3_prod_bucket
-      source: /${DRONE_TAG}
-      source_bucket:
+      S3_RELEASES_BUCKET:
         from_secret: s3_releases_bucket
-      delete: true
+    commands:
+      - aws s3 sync s3://${S3_RELEASES_BUCKET}/${DRONE_TAG}/ s3://${S3_PROD_BUCKET}/ --delete
